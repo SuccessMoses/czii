@@ -82,3 +82,15 @@ CONFIG_BLOB = """{
 
 TRAIN_OVERLAY = '/kaggle/input/czii-cryo-et-object-identification/train/overlay'
 WORKING_OVERLAY = '/kaggle/working/overlay'
+
+VOXEL_SIZE = 10
+TOMOGRAM_ALGORITHM = 'denoised'
+
+# Output Name for the Segmentation Targets
+NAME = 'remotetargets'
+USER_ID = 'deepfindET'
+SESSION_ID = '0'
+
+FLAG_BATCH_BOOTSTRAP = 1
+
+N_CLASS = 7
