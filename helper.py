@@ -271,6 +271,7 @@ def get_dataset(
             self.sessionID = sessionID
             self.Lrnd = Lrnd
             self.voxelSize = voxelSize
+            self.tomoAlg = constants.TOMOGRAM_ALGORITHM
             # Assuming augmentdata.DataAugmentation() is a class you want to initialize
             self.data_augmentor = augmentdata.DataAugmentation()
 
