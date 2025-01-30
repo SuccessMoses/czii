@@ -2,15 +2,11 @@ import pandas as pd
 import numpy as np
 import os
 import shutil
-from deepfindET.entry_points import step1
-from deepfindET.utils import copick_tools
 import matplotlib.pyplot as plt
 import copick
 import tensorflow as tf
 import numpy as np
-from deepfindET.utils import core, augmentdata
 from tensorflow.keras.utils import to_categorical
-
 
 import constants
 
