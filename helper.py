@@ -49,264 +49,204 @@ def dict_to_df(coord_dict, experiment_name):
     return df
 
 
-def create_working_overlay(source_dir=constants.TRAIN_OVERLAY, destination_dir=constants.WORKING_OVERLAY, prefix="curation_0_"):
+def calculate_patch_starts(dimension_size: int, patch_size: int) -> List[int]:
     """
-    Walks through the source directory, creates corresponding subdirectories in the destination, 
-    and copies files while ensuring they have the specified prefix.
-
-    Args:
-        source_dir (str): The path to the source directory.
-        destination_dir (str): The path to the destination directory.
-        prefix (str, optional): The prefix to add to files if not already present. Defaults to "curation_0_".
-    """
-    for root, dirs, files in os.walk(source_dir):
-        # Create corresponding subdirectories in the destination
-        relative_path = os.path.relpath(root, source_dir)
-        target_dir = os.path.join(destination_dir, relative_path)
-        os.makedirs(target_dir, exist_ok=True)
-
-        # Copy and rename each file
-        for file in files:
-            new_filename = file if file.startswith(prefix) else f"{prefix}{file}"
-            
-            # Define full paths for the source and destination files
-            source_file = os.path.join(root, file)
-            destination_file = os.path.join(target_dir, new_filename)
-            
-            # Copy the file with the new name
-            shutil.copy2(source_file, destination_file)
-            print(f"Copied {source_file} to {destination_file}")
-
-
-def write_train_targets_segmentation(copick_root, config, voxel_size=constants.VOXEL_SIZE, step1=step1, 
-                           tomogram_algorithm=constants.TOMOGRAM_ALGORITHM, out_name=constants.NAME, 
-                           out_user_id=constants.USER_ID, out_session_id=constants.USER_ID):
-    """
-    Generates training targets for protein coordinates and associated segmentations 
-    for the 3D U-Net model using CoPick data.
-
-    Args:
-        copick_root (object): The root object containing pickable objects and metadata.
-        voxel_size (float): The voxel size used in the tomogram data.
-        config (str): Configuration file path specifying project settings.
-        step1 (module): The module containing `create_train_targets` function.
-        tomogram_algorithm (str): The reconstruction algorithm for tomograms, e.g., 'wbp'.
-        out_name (str): Output name for the generated segmentation targets.
-        out_user_id (str): User ID under which the output targets will be saved.
-        out_session_id (str): Session ID associated with the output (for tracking).
-        run_ids (list, optional): List of Run-IDs for which to generate targets. Defaults to None.
+    Calculate the starting positions of patches along a single dimension
+    with minimal overlap to cover the entire dimension.
     
-    Returns:
-        dict: A dictionary containing train targets for each protein or object.
-    """
-    # Create working overlay
-    create_working_overlay()
-
-    train_targets = {}
-    # Define protein targets with their respective radii
-    targets = [(obj.name, None, None, (obj.radius / voxel_size)) 
-               for obj in copick_root.pickable_objects if obj.is_particle]
-
-    # Generate train target information
-    for obj_name, user_id, session_id, radius in targets:
-        train_targets[obj_name] = {
-            "label": copick_root.get_object(obj_name).label,
-            "user_id": user_id,
-            "session_id": session_id,
-            "radius": radius,
-            "is_particle_target": True,
-        }
-
-    # Define segmentation target (e.g., membrane)
-    seg_targets = [("membrane", None, None)]
-
-    # Generate segmentation target information
-    for obj_name, user_id, session_id in seg_targets:
-        train_targets[obj_name] = {
-            "label": copick_root.get_object(obj_name).label,
-            "user_id": user_id,
-            "session_id": session_id,
-            "radius": None,
-            "is_particle_target": False,
-        }
-
-    # Call create_train_targets to generate training targets
-    step1.create_train_targets(
-        config=config,
-        train_targets=train_targets,
-        voxel_size=voxel_size,
-        tomogram_algorithm=tomogram_algorithm,
-        out_name=out_name,
-        out_user_id=out_user_id,
-        out_session_id=out_session_id,
-    )
-
-    return train_targets  # Returning this in case it's useful for debugging or further processing
-
-
-def copick_data_generator(
-    TrainInstance,
-    input_dataset,  # The dataset from which patches are extracted
-    input_target,  # The corresponding ground truth (labels) for the dataset
-    batch_size,  # Number of samples to generate per batch
-    dim_in,  # Dimension of the input patches
-    Ncl,  # Number of classes for categorical labeling
-    flag_batch_bootstrap,  # Boolean flag to decide if batch bootstrapping is enabled
-    organizedPicksDict,  # Dictionary containing organized picking information
-    batch_data,
-    batch_target,
-):
-
-    # Calculate the padding value for extracting patches (half the dimension size)
-    p_in = int(np.floor(dim_in / 2))
-
-      # Get the dimensions of the tomogram from the first tomoID in the organized picks
-    tomodim = input_dataset[organizedPicksDict["tomoIDlist"][0]].shape
-
-    # While loop for generating batches of data
-    while True:
-
-        # Generate bootstrap indices if bootstrapping is enabled, otherwise set to None
-        pool = core.get_copick_boostrap_idx(organizedPicksDict, batch_size) if flag_batch_bootstrap else None
-        # pool = range(0, len(objlist))
-
-        # Initialize an empty list to store selected indices
-        idx_list = []
-
-        # Loop over the batch size to generate each sample in the batch
-        for i in range(batch_size):
-
-            # Randomly select an index from the bootstrap pool
-            randomBSidx = np.random.choice(pool["bs_idx"])
-            idx_list.append(randomBSidx)
-
-            # Find the original index position of the selected bootstrap index
-            index = np.where(pool["bs_idx"] == randomBSidx)[0][0]
-
-            # Determine the patch position (x, y, z) within the tomogram
-            x, y, z = core.get_copick_patch_position(
-                tomodim,
-                p_in,
-                TrainInstance.Lrnd,
-                TrainInstance.voxelSize,
-                pool["protein_coords"][index],
-            )
-
-            # Extract the data patch from the input dataset based on the calculated position
-            patch_data = input_dataset[pool["tomoID_idx"][index]][
-                z - p_in : z + p_in,
-                y - p_in : y + p_in,
-                x - p_in : x + p_in,
-            ]
-
-            # Extract the corresponding target patch (ground truth labels)
-            patch_target = input_target[pool["tomoID_idx"][index]][
-                z - p_in : z + p_in,
-                y - p_in : y + p_in,
-                x - p_in : x + p_in,
-            ]
-
-            # Convert the target patch to categorical format based on the number of classes
-            patch_target = to_categorical(patch_target, Ncl)
-
-              # Normalize the data patch by subtracting the mean and dividing by the standard deviation
-            patch_data = (patch_data - np.mean(patch_data)) / np.std(patch_data)
-
-            # Apply data augmentations (e.g., rotation, flipping) to both data and target patches
-            patch_data, patch_target = TrainInstance.data_augmentor.apply_augmentations(patch_data, patch_target)
-
-            # Store the processed target patch in the batch target array
-            batch_target[i] = patch_target
-
-            # Store the processed data patch in the batch data array (assuming single channel data)
-            batch_data[i, :, :, :, 0] = patch_data
-
-        # Yield the batch data and targets as output to the calling function
-        yield batch_data, batch_target
-
-
-
-def get_dataset(
-    batch_size,
-    sample_size,
-    dim_in,
-    n_class=constants.N_CLASS,
-    flag_batch_bootstrap=constants.FLAG_BATCH_BOOTSTRAP,
-    labelName=constants.NAME,  # Define labelName, labelUserID, sessionID as arguments
-    labelUserID=constants.USER_ID,
-    sessionID=constants.SESSION_ID,
-    Lrnd=15,
-    voxelSize=constants.VOXEL_SIZE
-):
-    """
-    Function to retrieve and prepare the copick dataset for training.
-
     Parameters:
-    - root_file: Path to the root dataset file.
-    - batch_size: Number of samples per batch.
-    - dim_in: Input patch dimension.
-    - n_class: Number of output classes.
-    - sample_size: Size of the sample data to use.
-    - flag_batch_bootstrap: Boolean flag for batch bootstrapping.
-    - labelName: The label name for the training instance.
-    - labelUserID: The user ID associated with the training instance.
-    - sessionID: The session ID for tracking.
-    - Lrnd: The learning radius, default value is 15.
-    - voxelSize: The size of the voxel, default value is 10.
-
+    -----------
+    dimension_size : int
+        Size of the dimension
+    patch_size : int
+        Size of the patch in this dimension
+        
     Returns:
-    - dataset: A TensorFlow Dataset object ready for training.
+    --------
+    List[int]
+        List of starting positions for patches
     """
+    if dimension_size <= patch_size:
+        return [0]
+        
+    # Calculate number of patches needed
+    n_patches = np.ceil(dimension_size / patch_size)
+    
+    if n_patches == 1:
+        return [0]
+    
+    # Calculate overlap
+    total_overlap = (n_patches * patch_size - dimension_size) / (n_patches - 1)
+    
+    # Generate starting positions
+    positions = []
+    for i in range(int(n_patches)):
+        pos = int(i * (patch_size - total_overlap))
+        if pos + patch_size > dimension_size:
+            pos = dimension_size - patch_size
+        if pos not in positions:  # Avoid duplicates
+            positions.append(pos)
+    
+    return positions
 
-    # Define TrainInstance class inside the function
-    class TrainInstance:
-        def __init__(self, labelName, labelUserID, sessionID, Lrnd, voxelSize):
-            self.labelName = labelName
-            self.labelUserID = labelUserID
-            self.sessionID = sessionID
-            self.Lrnd = Lrnd
-            self.voxelSize = voxelSize
-            # Assuming augmentdata.DataAugmentation() is a class you want to initialize
-            self.data_augmentor = augmentdata.DataAugmentation()
+def extract_3d_patches_minimal_overlap(arrays: List[np.ndarray], patch_size: int) -> Tuple[List[np.ndarray], List[Tuple[int, int, int]]]:
+    """
+    Extract 3D patches from multiple arrays with minimal overlap to cover the entire array.
+    
+    Parameters:
+    -----------
+    arrays : List[np.ndarray]
+        List of input arrays, each with shape (m, n, l)
+    patch_size : int
+        Size of cubic patches (a x a x a)
+        
+    Returns:
+    --------
+    patches : List[np.ndarray]
+        List of all patches from all input arrays
+    coordinates : List[Tuple[int, int, int]]
+        List of starting coordinates (x, y, z) for each patch
+    """
+    if not arrays or not isinstance(arrays, list):
+        raise ValueError("Input must be a non-empty list of arrays")
+    
+    # Verify all arrays have the same shape
+    shape = arrays[0].shape
+    if not all(arr.shape == shape for arr in arrays):
+        raise ValueError("All input arrays must have the same shape")
+    
+    if patch_size > min(shape):
+        raise ValueError(f"patch_size ({patch_size}) must be smaller than smallest dimension {min(shape)}")
+    
+    m, n, l = shape
+    patches = []
+    coordinates = []
+    
+    # Calculate starting positions for each dimension
+    x_starts = calculate_patch_starts(m, patch_size)
+    y_starts = calculate_patch_starts(n, patch_size)
+    z_starts = calculate_patch_starts(l, patch_size)
+    
+    # Extract patches from each array
+    for arr in arrays:
+        for x in x_starts:
+            for y in y_starts:
+                for z in z_starts:
+                    patch = arr[
+                        x:x + patch_size,
+                        y:y + patch_size,
+                        z:z + patch_size
+                    ]
+                    patches.append(patch)
+                    coordinates.append((x, y, z))
+    
+    return patches, coordinates
 
-    # Create an instance of TrainInstance
-    train_instance = TrainInstance(labelName, labelUserID, sessionID, Lrnd, voxelSize)
+# Note: I should probably averge the overlapping areas, 
+# but here they are just overwritten by the most recent one. 
 
-    tomo_ids = [r.name for r in copick.from_file(constants.ROOT_FILE).runs]
-    # Load training data
-    train_tomo_ids = tomo_ids[:sample_size]
-    print(f'Train Tomo IDs : {train_tomo_ids}')
-    print(f'Valid Tomo IDs : {tomo_ids[sample_size:]}')
-    (trainData, trainTarget) = core.load_copick_datasets(constants.ROOT_FILE, train_instance, train_tomo_ids)
+def reconstruct_array(patches: List[np.ndarray], 
+                     coordinates: List[Tuple[int, int, int]], 
+                     original_shape: Tuple[int, int, int]) -> np.ndarray:
+    """
+    Reconstruct array from patches.
+    
+    Parameters:
+    -----------
+    patches : List[np.ndarray]
+        List of patches to reconstruct from
+    coordinates : List[Tuple[int, int, int]]
+        Starting coordinates for each patch
+    original_shape : Tuple[int, int, int]
+        Shape of the original array
+        
+    Returns:
+    --------
+    np.ndarray
+        Reconstructed array
+    """
+    reconstructed = np.zeros(original_shape, dtype=np.int64)  # To track overlapping regions
+    
+    patch_size = patches[0].shape[0]
+    
+    for patch, (x, y, z) in zip(patches, coordinates):
+        reconstructed[
+            x:x + patch_size,
+            y:y + patch_size,
+            z:z + patch_size
+        ] = patch
+        
+    
+    return reconstructed
+                         
 
-    # Query organized picks
-    copickRoot = copick.from_file(constants.ROOT_FILE)
-    organizedPicksDict = core.query_available_picks(copickRoot, train_tomo_ids, None)
+INFERENCE_TRNASFORMS = Compose([
+    EnsureChannelFirstd(keys=["image"], channel_dim="no_channel"),
+    NormalizeIntensityd(keys="image"),
+    Orientationd(keys=["image"], axcodes="RAS")
+])
 
-    batch_data = np.zeros((batch_size, dim_in, dim_in, dim_in, 1))
-    batch_target = np.zeros((batch_size, dim_in, dim_in, dim_in, n_class))
+id_to_name = {1: "apo-ferritin", 
+              2: "beta-amylase",
+              3: "beta-galactosidase", 
+              4: "ribosome", 
+              5: "thyroglobulin", 
+              6: "virus-like-particle"}
+
+BLOB_THRESHOLD = 500
+CERTAINTY_THRESHOLD = 0.5
+
+CLASSES = [1, 2, 3, 4, 5, 6]
+
+def validation(model, valid_id):
+    with torch.no_grad():
+        location_df = []
+        for run in ROOT.runs:
+            print(run)
+
+            tomo = run.get_voxel_spacing(10)
+            tomo = tomo.get_tomogram(TOMOGRAM_ALGORITHM).numpy()
+
+            tomo_patches, coordinates  = extract_3d_patches_minimal_overlap([tomo], 96)
+
+            tomo_patched_data = [{"image": img} for img in tomo_patches]
+
+            tomo_ds = CacheDataset(data=tomo_patched_data, transform=INFERENCE_TRNASFORMS, cache_rate=1.0)
+
+            pred_masks = []
+
+            for i in range(len(tomo_ds)):
+                input_tensor = tomo_ds[i]['image'].unsqueeze(0).to("cuda")
+                model_output = model(input_tensor)
+
+                probs = torch.softmax(model_output[0], dim=0)
+                thresh_probs = probs > CERTAINTY_THRESHOLD
+                _, max_classes = thresh_probs.max(dim=0)
+
+                pred_masks.append(max_classes.cpu().numpy())
+                
+
+            reconstructed_mask = reconstruct_array(pred_masks, coordinates, tomo.shape)
+            
+            location = {}
+
+            for c in CLASSES:
+                cc = cc3d.connected_components(reconstructed_mask == c)
+                stats = cc3d.statistics(cc)
+                zyx=stats['centroids'][1:]*10.012444 #https://www.kaggle.com/competitions/czii-cryo-et-object-identification/discussion/544895#3040071
+                zyx_large = zyx[stats['voxel_counts'][1:] > BLOB_THRESHOLD]
+                xyz =np.ascontiguousarray(zyx_large[:,::-1])
+
+                location[id_to_name[c]] = xyz
 
 
-    # Create dataset
-    dataset = tf.data.Dataset.from_generator(
-        lambda: copick_data_generator(
-            train_instance,  # Pass the train_instance instead of TrainInstance
-            trainData,
-            trainTarget,
-            batch_size,
-            dim_in,
-            n_class,
-            flag_batch_bootstrap,
-            organizedPicksDict,
-            batch_data,
-            batch_target,
-        ),
-        output_signature=(
-            tf.TensorSpec(shape=(batch_size, dim_in, dim_in, dim_in, 1), dtype=tf.float32),
-            tf.TensorSpec(shape=(batch_size, dim_in, dim_in, dim_in, n_class), dtype=tf.float32),
-        ),
-    )
-    dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+            df = dict_to_df(location, run.name)
+            location_df.append(df)
+        
+        location_df = pd.concat(location_df)
+        location_df.insert(loc=0, column='id', value=np.arange(len(location_df)))
 
-    return dataset
+    _, score = compute_lb(location_df, valid_id)
+    return score
+
 
