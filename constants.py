@@ -18,7 +18,7 @@ from monai.transforms import (
 
 import cc3d
 import pandas as pd
-from callback import compute_lb
+
 
 CONFIG_BLOB = """{
     "name": "czii_cryoet_mlchallenge_2024",
