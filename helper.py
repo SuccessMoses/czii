@@ -8,6 +8,17 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.keras.utils import to_categorical
 
+from monai.transforms import (
+    Compose, 
+    EnsureChannelFirstd, 
+    Orientationd,  
+    AsDiscrete,  
+    RandFlipd, 
+    RandRotate90d, 
+    NormalizeIntensityd,
+    RandCropByLabelClassesd,
+)
+
 import constants
 from typing import List, Tuple, Union
 
