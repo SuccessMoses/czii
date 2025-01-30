@@ -231,7 +231,6 @@ def copick_data_generator(
 
 
 def get_dataset(
-    root_file,
     batch_size,
     sample_size,
     dim_in,
@@ -271,22 +270,21 @@ def get_dataset(
             self.sessionID = sessionID
             self.Lrnd = Lrnd
             self.voxelSize = voxelSize
-            self.tomoAlg = constants.TOMOGRAM_ALGORITHM
             # Assuming augmentdata.DataAugmentation() is a class you want to initialize
             self.data_augmentor = augmentdata.DataAugmentation()
 
     # Create an instance of TrainInstance
     train_instance = TrainInstance(labelName, labelUserID, sessionID, Lrnd, voxelSize)
 
-    tomo_ids = [r.name for r in copick.from_file(root_file).runs]
+    tomo_ids = [r.name for r in copick.from_file(constants.ROOT_FILE).runs]
     # Load training data
     train_tomo_ids = tomo_ids[:sample_size]
     print(f'Train Tomo IDs : {train_tomo_ids}')
     print(f'Valid Tomo IDs : {tomo_ids[sample_size:]}')
-    (trainData, trainTarget) = core.load_copick_datasets(root_file, train_instance, train_tomo_ids)
+    (trainData, trainTarget) = core.load_copick_datasets(constants.ROOT_FILE, train_instance, train_tomo_ids)
 
     # Query organized picks
-    copickRoot = copick.from_file(root_file)
+    copickRoot = copick.from_file(constants.ROOT_FILE)
     organizedPicksDict = core.query_available_picks(copickRoot, train_tomo_ids, None)
 
     batch_data = np.zeros((batch_size, dim_in, dim_in, dim_in, 1))
@@ -315,3 +313,4 @@ def get_dataset(
     dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
     return dataset
+
