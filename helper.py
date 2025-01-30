@@ -7,6 +7,7 @@ import copick
 import tensorflow as tf
 import numpy as np
 from tensorflow.keras.utils import to_categorical
+import torch
 
 from monai.transforms import (
     Compose, 
