@@ -206,3 +206,4 @@ def validation(model, valid_id):
         location_df.insert(loc=0, column='id', value=np.arange(len(location_df)))
 
     _, score = compute_lb(location_df, valid_id)
+    return score
