@@ -8,7 +8,7 @@ import tensorflow as tf
 import numpy as np
 from tensorflow.keras.utils import to_categorical
 import torch
-
+import cc3d
 from monai.transforms import (
     Compose, 
     EnsureChannelFirstd, 
@@ -210,15 +210,14 @@ CERTAINTY_THRESHOLD = 0.5
 
 CLASSES = [1, 2, 3, 4, 5, 6]
 
-ROOT = constants.ROOT
 def validation(model, valid_id):
     with torch.no_grad():
         location_df = []
-        for run in ROOT.runs:
+        for run in constants.ROOT.runs:
             print(run)
 
             tomo = run.get_voxel_spacing(10)
-            tomo = tomo.get_tomogram(TOMOGRAM_ALGORITHM).numpy()
+            tomo = tomo.get_tomogram(constants.TOMOGRAM_ALGORITHM).numpy()
 
             tomo_patches, coordinates  = extract_3d_patches_minimal_overlap([tomo], 96)
 
