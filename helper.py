@@ -210,6 +210,7 @@ CERTAINTY_THRESHOLD = 0.5
 
 CLASSES = [1, 2, 3, 4, 5, 6]
 
+ROOT = constants.ROOT
 def validation(model, valid_id):
     with torch.no_grad():
         location_df = []
