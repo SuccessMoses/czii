@@ -9,7 +9,7 @@ import numpy as np
 from tensorflow.keras.utils import to_categorical
 
 import constants
-
+from typing import List, Tuple, Union
 
 def dict_to_df(coord_dict, experiment_name):
     """
